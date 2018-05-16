@@ -1,0 +1,6 @@
+[package]
+name = "dufstatrust"
+version = "0.1.0"
+authors = ["hochschwender"]
+
+[dependencies]
