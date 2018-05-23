@@ -4,6 +4,9 @@ use std::fs::{self, DirEntry};
 use std::path::{Path, PathBuf};
 use std::env;
 use std::process;
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::fmt;
 
 macro_rules! str {
     ($expression:expr) => (
@@ -89,7 +92,7 @@ impl Default for CLIOptions {
     }
 }
 //for the FileInformations
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct DUFileStruct{
     filepath: PathBuf,
     filesize: u64,
@@ -100,33 +103,80 @@ struct DUDirStruct{
     dirpath: PathBuf,
     files: Vec<DUFileStruct>,
     dirsize: u64,
+    subdirs: Rc<RefCell<Option<Vec<DUDirStruct>>>>,
 }
-
 impl DUDirStruct {
 
     fn getSize(&mut self){
+        match self.subdirs.borrow_mut().as_mut(){
+            Some(x) => {
+                for i in x.iter_mut(){
+                    i.getSize();
+                    self.dirsize += i.dirsize;
+                }
+            }
+            None => {}
+        }
         for i in self.files.iter(){
-            self.dirsize += i.filesize;
+             self.dirsize += i.filesize;       
         }
     }
+    
 }
-fn readDir(root: &Path) -> Vec<DUDirStruct> {
-    let mut dirs = vec![
-        DUDirStruct{
+impl fmt::Display for DUDirStruct{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fn goIntoStruct(root: &DUDirStruct) -> Vec<DUDirStruct> {
+            let mut dirs: Vec<DUDirStruct> = vec![DUDirStruct{
+                dirpath: root.dirpath.clone().to_path_buf(),
+                files: root.files.clone(),
+                dirsize: root.dirsize,
+                subdirs: Rc::new(RefCell::new(None)),
+            }];
+            match root.subdirs.borrow().as_ref(){
+                Some(x) => {
+                    for i in x.iter(){
+                        dirs.append(&mut goIntoStruct(&i));
+                    }
+                }
+                None => {}
+            }
+            dirs
+        }
+        let mut dirs: Vec<DUDirStruct> = goIntoStruct(self);
+        dirs.reverse();
+        for dir in dirs.iter(){
+            writeln!(f, "{}{:10}{}", dir.dirpath.to_str().unwrap_or(""), "", dir.dirsize)?;
+            for file in dir.files.iter(){
+                writeln!(f, "\t{}{:10}{}",file.filepath.to_str().unwrap_or(""), "", file.filesize)?;
+            }
+        }
+        write!(f, "")
+    }
+}
+fn readDir(root: &Path) -> DUDirStruct {
+    let mut dirs = DUDirStruct{
             dirpath: root.to_path_buf(),
             files: Vec::new(),
-            dirsize: 0, 
-        }];
+            dirsize: 0,
+            subdirs: Rc::new(RefCell::new(Some(Vec::new()))),
+        };
+    let mut inserts: i32 = 0;
     if root.is_dir(){
         if let Ok(entries) = fs::read_dir(root) {
             for entry in entries {
                 if let Ok(entry) = entry {
                     if let Ok(file_type) = entry.file_type() {
                         if file_type.is_dir() {
-                            dirs.extend(readDir(&entry.path()));
+                            match dirs.subdirs.borrow_mut().as_mut(){
+                                Some(x) =>  {
+                                    x.push(readDir(&entry.path()));
+                                    inserts += 1;
+                                },
+                                None => {},
+                            }
                         } else {
                             if let Ok(metadata) = entry.metadata(){
-                                dirs[0].files.push(
+                                dirs.files.push(
                                 DUFileStruct{
                                     filepath: entry.path().to_path_buf(),
                                     filesize: metadata.len(),
@@ -137,6 +187,9 @@ fn readDir(root: &Path) -> Vec<DUDirStruct> {
                 }
             }
         }
+    }
+    if inserts == 0{
+        let waste = dirs.subdirs.replace(None);
     }
     dirs
 }
@@ -153,11 +206,6 @@ fn main() {
     let path = env::current_dir().unwrap();
     let mut clio: CLIOptions = Default::default();
     let mut dirs = readDir(&path);
-    for i in dirs.iter_mut(){
-        i.getSize();
-    }
-    for i in dirs.iter(){
-        println!("{:?}", i);
-    }
-
+    dirs.getSize();
+    println!("{}", dirs);
 }
