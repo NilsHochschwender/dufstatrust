@@ -1,0 +1,6 @@
+[package]
+name = "timeParse"
+version = "0.1.0"
+authors = ["hochschwender"]
+
+[dependencies]
