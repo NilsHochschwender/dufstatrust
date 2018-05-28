@@ -4,8 +4,12 @@ extern crate regex;
 use regex::Regex;
 
 macro_rules! str {
-   ($expression:expr) => (
-       String::from($expression);
+   ($(x:expr), *) => (
+       let mut string_tmp = String::new();
+       $(
+           string_tmp.push_str(String::from($x));
+       )*
+       string_tmp
     )
 }
 
@@ -61,6 +65,23 @@ impl Month{
             None | _  => str!(""),
         }
     }
+    pub fn get_int(&self) -> i32 {
+        match *self {
+            January   => 1,
+            February  => 2,
+            March     => 3,
+            April     => 4,
+            May       => 5,
+            June      => 6,
+            July      => 7,
+            August    => 8,
+            September => 9,
+            October   => 10,
+            November  => 11,
+            December  => 12,
+            None | _  => 0,
+        }
+    }
 }
 
 
@@ -80,7 +101,7 @@ fn get_month(days: i32, isLeapYear: bool) -> (Month, i8){
             305...334 => (Month::November,  days - 304),
             335...365 => (Month::December,  days - 334),
             _         => (Month::None,               0),
-        } 
+        }
     } else {
         match days{
             1...31    => (Month::January,   days      ),
@@ -96,7 +117,7 @@ fn get_month(days: i32, isLeapYear: bool) -> (Month, i8){
             306...335 => (Month::November,  days - 305),
             336...366 => (Month::December,  days - 335),
             _         => (Month::None,               0),
-        } 
+        }
     };
     (m, da as i8)
 }
@@ -123,7 +144,7 @@ impl Day{
             Sat      => str!("Sat"),
             Sun      => str!("Sun"),
             None | _ => str!(""),
-        } 
+        }
     }
     pub fn get_long(&self) -> String {
         match *self {
@@ -135,6 +156,18 @@ impl Day{
             Sat      => str!("Saturday"),
             Sun      => str!("Sunday"),
             None | _ => str!(""),
+        }
+    }
+    pub fn get_int(&self) -> i32 {
+        match *self {
+            Mon      => 1,
+            Tue      => 2,
+            Wed      => 3,
+            Thu      => 4,
+            Fri      => 5,
+            Sat      => 6,
+            Sun      => 7,
+            None | _ => 0,
         }
     }
 }
@@ -222,13 +255,14 @@ impl Time{
                 December  => 12,
                 None | _  => -1,
             };
-            let w = if m != -1 {
+            let mut w = 0i32;
+            if m != -1 {
                 let y = if m < 3 {y -1} else {y};
-                ((d as f64 + ((2.6f64 * ((m + 9) % 12 +1) as f64) as f64).floor() + y % 100 + ((y as f64 % 100f64 / 4f64) as f64).floor() + ((y as f64 / 400f64) as f64).floor() - 2 * ((y as f64 / 100f64) as f64).floor() - 1) % 7 + 7) % 7 + 1
-            } else { 
-                0
+                w = (((d as f64 + ((2.6f64 * ((m + 9) % 12 +1) as f64) as f64).floor() \
+                    + y % 100 + ((y as f64 % 100f64 / 4f64) as f64).floor() \
+                    + ((y as f64 / 400f64) as f64).floor() - 2 * ((y as f64 / 100f64) as f64).floor() - 1) % 7 + 7) % 7 + 1) as i32;
             }
-            w as i32
+            w
         }
         time.day_str = match day_in_week(&time.month, time.day, time.year){
                 1 => Day::Mon,
@@ -289,7 +323,7 @@ impl Time{
         //  %::z  +hh:mm:ss numeric time zone (e.g., -04:00:00)
         //  %:::z  numeric time zone with : to necessary precision (e.g., -04, +05:30)
         //  %Z   alphabetic time zone abbreviation (e.g., EDT)
-        let re = Regex::new(r"%[%aAbBcCdDeFgGhHIjklmMnNpPrRsStTuUVwWxXyYzZ][:]{0,3}.").unwrap();
+        let re = Regex::new(r"%[_]{0,1}[%aAbBcCdDeFgGhHIjklmMnNpPrRsStTuUVwWxXyYzZ][:]{0,3}.").unwrap();
         let mut formssplit: Vec<String>;
         for mat in re.find_iter(form){
             formssplit.push(String::From(mat.as_str));
@@ -300,9 +334,28 @@ impl Time{
             let _ = substring.remove(0);
             let last = substring.pop();
             match substring{
-                    "%" =>  out.push_str(String::from("%",last)),
-                    "a" =>  out.push_str(String::from("",last)), // todo create function for day
-                    "A" =>  
+                "%"        =>  out.push_str(str!("%", last)),
+                "a"        =>  out.push_str(str!(self.day_str.get_short(), last)),
+                "A"        =>  out.push_str(str!(self.day_str.get_long(), last)),
+                "b" | "h"  =>  out.push_str(str!(self.month.get_short(), last)),
+                "B"        =>  out.push_str(str!(self.month.get_long(), last)),
+                "c"        =>  out.push_str(str!(self.day_str.get_short(), " ", self.month.get_short(), " ", self.days, " ", self.hour, ":", self.minute, ":", self.seconds, " ", self.year, last)),
+                "C"        =>  out.push_str(str!(self.year / 100, last)),
+                "d"        =>  out.push_str(str!(self.days, last)),
+                "D"        =>  out.push_str(str!(self.month.get_int(), "/", self.day_str.get_int(), "/", self.year % 100, last)),
+                "e" | "_d" =>  out.push_str(str!(String::from(self.days).replace("0"," "), last)),
+                "F"        =>  out.push_str(str!(self.year, "-", self.month.get_int(), "-", self.days, last)),
+                "H"        =>  out.push_str(str!(self.hour, last)),
+                "I"        =>  out.push_str(str!(self.hour % 12 + 1, last)),
+                "j"        =>  out.push_str(str!(self.total_days, last)),
+                "k" | "_H" =>  out.push_str(str!(String::from(self.hour).replace("0", " "), last)),
+                "l" | "_I" =>  out.push_str(str!(String::from(self.hour % 12 + 1).replace("0", " "), last)),
+                "m"        =>  out.push_str(str!(self.month.get_int(), last)),
+                "M"        =>  out.push_str(str!(self.minute, last)),
+                "n"        =>  out.push_str(str!("\n")),
+                "N"        =>  out.push_str(str!(self.nanoseconds, last)),
+                "r"        =>  out.push_str(str!(self.hour % 12 , ":", self.minute, ":", self.seconds, " ", if self.hour > 11{"AM"} else {"PM"}, last)),
+                "R"        =>  out.push_str(str!())
             }
         }
     }
